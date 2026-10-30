@@ -153,7 +153,7 @@ while true; do
   MHZ="$(awk -F: '/cpu MHz/ { s+=$2; n++ } END { if(n) printf "%.0f", s/n; else print "null" }' /proc/cpuinfo)"
   [ "$MHZ" = "null" ] && [ -f /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq ] && MHZ=$(( $(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq) / 1000 ))
   UPTIME="$(cut -d. -f1 /proc/uptime)"
-  DISKS="$(df -B1 -x tmpfs -x devtmpfs -x squashfs -x overlay -x efivarfs -x 9p -x drvfs 2>/dev/null | awk 'NR>1 && $6 !~ /^\/(boot|snap|init$|usr\/lib\/wsl|mnt\/wsl)/ { gsub(/"/,"",$6); printf "%s{\"name\":\"%s\",\"total\":%s,\"used\":%s}", (n++?",":""), $6, $2, $3 }')"
+  DISKS="$(df -B1 -x tmpfs -x devtmpfs -x squashfs -x overlay -x efivarfs -x 9p -x drvfs 2>/dev/null | awk -v root="$DISK_ROOT" 'NR>1 && $6 !~ /^\/(boot|snap|init$|usr\/lib\/wsl|mnt\/wsl)/ && (root == "" || index($6, root "/") == 1) { if (root != "") $6 = substr($6, length(root) + 1); gsub(/"/,"",$6); printf "%s{\"name\":\"%s\",\"total\":%s,\"used\":%s}", (n++?",":""), $6, $2, $3 }')"
 
   GPUS=""
   if command -v nvidia-smi >/dev/null 2>&1; then

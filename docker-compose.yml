@@ -1,0 +1,31 @@
+# Device Monitor hub on the NAS. Dashboard at http://<nas-ip>:7777.
+#
+# Folders used on the NAS (create them before the first start):
+#   /volume1/docker/device-monitor/data   access key, device list and history (back this up)
+services:
+  device-monitor:
+    image: ghcr.io/baffler/device-monitor:${DEVICE_MONITOR_VERSION:-latest}
+    container_name: device-monitor
+    restart: unless-stopped
+
+    # Host networking so LAN auto-discovery (UDP 7778 broadcast) and Wake-on-LAN work,
+    # and the hub sees the NAS's real hostname and LAN address.
+    network_mode: host
+
+    environment:
+      - PORT=7777
+      # Your time zone, so "today" in the electricity totals starts at your midnight.
+      - TZ=${TZ:-UTC}
+      # NAS agent: list only the volumes mounted under /host (not the container's own mounts).
+      - DISK_ROOT=/host
+      # - NO_LOCAL_AGENT=1   # uncomment to skip monitoring the NAS itself
+
+    volumes:
+      - /volume1/docker/device-monitor/data:/app/data
+      # For the built-in NAS agent: stable device id across container rebuilds.
+      - /etc/machine-id:/etc/machine-id:ro
+      # Shows the NAS volume as a disk on its card.
+      - /volume1:/host/volume1:ro
+
+    mem_limit: 192m
+    cpus: 0.5

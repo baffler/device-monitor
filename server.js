@@ -556,6 +556,10 @@ if (require.main === module) {
     console.log(`  This PC:       http://localhost:${port}`);
     for (const a of hub.addresses) console.log(`  Other devices: http://${a.address}:${port}   (${a.name})`);
     if (!process.env.NO_LOCAL_AGENT) startAgent({ hub: `http://127.0.0.1:${port}`, token: hub.token, scriptDir: path.join(__dirname, 'agent') });
+    // Flush the device list and the unfinished history minute (e.g. on `docker stop`).
+    const stop = () => { hub.close(); process.exit(); };
+    process.removeAllListeners('SIGINT').on('SIGINT', stop);
+    process.removeAllListeners('SIGTERM').on('SIGTERM', stop);
   }, e => {
     console.error(e.code === 'EADDRINUSE' ? `Port ${port} is already in use — is the hub already running?` : e);
     process.exit(1);
