@@ -1,9 +1,9 @@
 # Headless Device Monitor hub (no Electron). Only the hub's own files go in the image.
 FROM node:24-alpine
 
-# bash + coreutils + gawk are only for the built-in agent that reports the NAS itself.
-# Drop them (and set NO_LOCAL_AGENT=1) if you only want the hub.
-RUN apk add --no-cache tini tzdata bash coreutils gawk
+# bash, coreutils, gawk and curl are only for the built-in agent that reports the NAS itself
+# (it posts each report with curl). Drop them (and set NO_LOCAL_AGENT=1) if you only want the hub.
+RUN apk add --no-cache tini tzdata bash coreutils gawk curl
 
 ENV NODE_ENV=production \
     PORT=7777
