@@ -48,8 +48,9 @@ grace_power() {
     case "$(cat "$h/power1_oem_info" 2>/dev/null)" in "Grace Power Socket"*) cat "$h/power1_average" 2>/dev/null ;; esac
   done | awk '{ s+=$1; n++ } END { if (n) printf "%.1f", s/1e6 }'
 }
+# RAPL_DIR: Docker masks /sys/devices/virtual/powercap, so a container gets the host's mounted elsewhere.
 read_rapl() {
-  for z in /sys/class/powercap/intel-rapl:[0-9]; do [ -r "$z/energy_uj" ] && echo "$(cat "$z/energy_uj") $(cat "$z/max_energy_range_uj" 2>/dev/null || echo 0)"; done
+  for z in "${RAPL_DIR:-/sys/class/powercap}"/intel-rapl:[0-9]; do [ -r "$z/energy_uj" ] && echo "$(cat "$z/energy_uj") $(cat "$z/max_energy_range_uj" 2>/dev/null || echo 0)"; done
 }
 cpu_power() {
   local g; g="$(grace_power)"; [ -n "$g" ] && { echo "$g"; return; }

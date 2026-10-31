@@ -18,6 +18,8 @@ services:
       - TZ=${TZ:-UTC}
       # NAS agent: list only the volumes mounted under /host (not the container's own mounts).
       - DISK_ROOT=/host
+      # NAS agent: measured CPU power. Docker hides the host's RAPL counters, so they're mounted below.
+      - RAPL_DIR=/host/rapl
       # - NO_LOCAL_AGENT=1   # uncomment to skip monitoring the NAS itself
 
     volumes:
@@ -26,6 +28,8 @@ services:
       - /etc/machine-id:/etc/machine-id:ro
       # Shows the NAS volume as a disk on its card.
       - /volume1:/host/volume1:ro
+      # CPU power counters (Intel/AMD RAPL). Remove this line if the NAS doesn't have this folder.
+      - /sys/devices/virtual/powercap/intel-rapl:/host/rapl:ro
 
     mem_limit: 192m
     cpus: 0.5
