@@ -36,6 +36,7 @@ $videoControllers = @(Get-CimInstance Win32_VideoController | Where-Object { $_.
 function Num($v) { if ($null -eq $v -or "$v" -match 'N/A|Not Supported|\[') { return $null }; try { return [double]$v } catch { return $null } }
 
 $prevCpu = $null; $prevNet = $null; $prevDisk = $null; $prevTime = $null
+$energyMeter = $true
 
 # Temperatures/fans from LibreHardwareMonitor or OpenHardwareMonitor (if running).
 function Get-HwSensors {
@@ -43,6 +44,28 @@ function Get-HwSensors {
     $s = Get-CimInstance -Namespace $ns -ClassName Sensor -ErrorAction SilentlyContinue
     if ($s) { return $s }
   }
+  return Get-LhmWebSensors
+}
+
+# Current LibreHardwareMonitor builds (.NET) no longer publish WMI. Read its Remote Web Server
+# instead (Options > Remote Web Server > Run; default port 8085), shaped like the WMI sensors.
+$lhmUrl = if ($env:DM_LHM_URL) { $env:DM_LHM_URL.TrimEnd('/') } else { 'http://127.0.0.1:8085' }
+function Get-LhmWebSensors {
+  try { $root = Invoke-RestMethod "$lhmUrl/data.json" -TimeoutSec 1 -UseBasicParsing } catch { return $null }
+  $out = New-Object System.Collections.Generic.List[object]
+  $stack = New-Object System.Collections.Stack
+  $stack.Push($root)
+  while ($stack.Count) {
+    $n = $stack.Pop()
+    foreach ($c in @($n.Children)) { if ($c) { $stack.Push($c) } }
+    if (-not $n.SensorId -or -not $n.Type) { continue }
+    $raw = if ($null -ne $n.RawValue) { "$($n.RawValue)" } else { "$($n.Value)" }   # e.g. "45.2 W" (or "45,2 W")
+    if ($raw -notmatch '-?\d+(?:[.,]\d+)?') { continue }
+    $v = [double]::Parse($Matches[0].Replace(',', '.'), [Globalization.CultureInfo]::InvariantCulture)
+    $parent = ($n.SensorId -split '/')[0..2] -join '/'   # "/amdcpu/0/power/0" -> "/amdcpu/0", like WMI's Parent
+    $out.Add([pscustomobject]@{ Name = $n.Text; SensorType = $n.Type; Parent = $parent; Value = $v })
+  }
+  if ($out.Count) { return $out }
   return $null
 }
 
@@ -176,7 +199,8 @@ while ($true) {
       if ($s.SensorType -eq 'Temperature') { $temps += [ordered]@{ name = $s.Name; parent = $s.Parent; value = [math]::Round($s.Value, 1) } }
       elseif ($s.SensorType -eq 'Fan' -and $s.Value -gt 0) { $fans += [ordered]@{ name = $s.Name; rpm = [math]::Round($s.Value) } }
     }
-    $cpuT = $sensors | Where-Object { $_.SensorType -eq 'Temperature' -and $_.Parent -match 'cpu' -and $_.Name -match 'Package|Tctl|Tdie|CPU Total|Core Average' } | Select-Object -First 1
+    # 0 means the sensor exists but can't be read (e.g. its driver was blocked).
+    $cpuT = $sensors | Where-Object { $_.SensorType -eq 'Temperature' -and $_.Parent -match 'cpu' -and $_.Name -match 'Package|Tctl|Tdie|CPU Total|Core Average' -and $_.Value -gt 0 } | Select-Object -First 1
     if ($cpuT) { $cpu.temp = [math]::Round($cpuT.Value, 1) }
     foreach ($g in $gpus) {
       if ($null -eq $g.temp) {
@@ -184,6 +208,12 @@ while ($true) {
         if ($gt) { $g.temp = [math]::Round($gt.Value, 1) }
       }
     }
+  }
+  # CPU package power from Windows' own Energy Meter counters (RAPL; no driver or admin needed).
+  if (-not $payload.power -and $energyMeter) {
+    $pkg = Get-CimInstance Win32_PerfFormattedData_PowerMeterCounter_EnergyMeter -Filter "Name='RAPL_Package0_PKG'"
+    if ($pkg) { if ($pkg.Power -gt 0) { $payload.power = [ordered]@{ cpu = [math]::Round($pkg.Power / 1000, 1) } } }   # mW
+    else { $energyMeter = $false }   # not on this PC; stop asking
   }
   if ($null -eq $cpu.temp) {
     $tz = Get-CimInstance Win32_PerfFormattedData_Counters_ThermalZoneInformation | Where-Object { $_.HighPrecisionTemperature -gt 0 } | Select-Object -First 1
